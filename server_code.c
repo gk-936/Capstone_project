@@ -96,7 +96,7 @@ int main() {
 
 
             // Send the server's reply back to the client
-            if (send(new_sockfd, formatted_msg, strlen(server_response), 0) < 0) {
+            if (send(new_sockfd, formatted_msg, strlen(formatted_msg), 0) < 0) {
                 perror("Failed to send response");
                 break;
             }
