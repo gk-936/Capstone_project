@@ -93,13 +93,13 @@ int main() {
             int rec = recv(sockfd, buf, BUFFER_SIZE - 1, 0);
             
             if (rec <= 0) {
-                if (rec == 0) printf("Server disconnected.\n");
+                if (rec == 0) printf("**Server disconnected.**\n");
                 else perror("Failed to receive message");
                 break;
             }
 
             buf[rec] = '\0';
-            printf("[Server] %s\n", buf);
+            printf("\n[Server] %s\n", buf);
         }
     }
 

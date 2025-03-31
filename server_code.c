@@ -21,6 +21,7 @@ int main() {
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd == -1) {
         perror("Socket creation failed");
+        close(sockfd);
         return 1;
     }
 
