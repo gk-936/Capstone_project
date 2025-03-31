@@ -5,94 +5,104 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <poll.h>
 
-#define PORT 8080  // the port number to connect to the server
-#define MAX_MSG 1024  // the maximum message length allowed
-#define BUFFER_SIZE 4096  //the buffer size for receiving data from the server
+#define PORT 8080
+#define MAX_MSG 1024
+#define BUFFER_SIZE 4096
+#define MAX_USERNAME 256
 
 int main() {
-    char username[256];  // to store the client's username
-    char server_ip[256];  // to store the IP address of the server
-    char message[MAX_MSG];  //to store the message that will be sent to the server
+    char username[MAX_USERNAME] = {0};
+    char server_ip[MAX_USERNAME] = {0};
+    char message[MAX_MSG] = {0};
 
-    // ask the user to enter their username
     printf("Enter your username: ");
     scanf("%255s", username);
-    getchar();  
+    getchar();
 
-    // ask the user to enter the server's IP address
     printf("Enter server IP address: ");
-    scanf("%255s", server_ip); 
-    getchar(); 
+    scanf("%255s", server_ip);
+    getchar();
 
-    // Create a socket using the TCP protocol
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd == -1) {  // Check if the socket creation failed
-        perror("Socket creation failed");  // Print an error message
-        return 1;  // Exit with an error status
+    if (sockfd == -1) {
+        perror("Socket creation failed");
+        return 1;
     }
 
-    struct sockaddr_in remote_addr;  // Structure to hold server address information
-    remote_addr.sin_family = AF_INET;  // Set the address family to IPv4
-    remote_addr.sin_port = htons(PORT);  // Set the port number, converting it to network byte order
+    struct sockaddr_in remote_addr;
+    remote_addr.sin_family = AF_INET;
+    remote_addr.sin_port = htons(PORT);
 
-    // Convert the string IP address to a proper format and validate it
     if (!inet_aton(server_ip, &remote_addr.sin_addr)) {
-        perror("Invalid IP address format");  // Print an error message if the IP address is invalid
-        close(sockfd);  // Close the socket before exiting
+        perror("Invalid IP address format");
+        close(sockfd);
         return 1;
     }
 
-    // Attempt to establish a connection to the server
     if (connect(sockfd, (struct sockaddr *)&remote_addr, sizeof(remote_addr)) < 0) {
-        perror("Failed to connect to server");  // Print an error message if the connection fails
-        close(sockfd);  // Close the socket before exiting
+        perror("Failed to connect to server");
+        close(sockfd);
         return 1;
     }
 
-    printf("Connected to server at %s!\n", server_ip);  // Notify the user of a successful connection
+    printf("Connected to server at %s!\n", server_ip);
+    printf("You can start sending messages. Type '\\exit' to quit. Type '\\ask' to speak with mistral.\n");
 
-    while (1) {  // Infinite loop for continuous message exchange
-        printf("[Client %s] > ", username);  // Display the prompt with the username
-        fgets(message, MAX_MSG, stdin);  // Read user input from standard input
-        message[strcspn(message, "\n")] = 0;  // Remove the newline character from the input
-       if (strcmp(message,"\\exit")==0){
-          printf("exiting...\n");
-          break; //exit the program at the command \exit
+    struct pollfd fds[2] = {
+        { 0, POLLIN, 0 },
+        { sockfd, POLLIN, 0 }
+    };
 
-        }
-        if (strlen(message) == 0) {  // Check if the message is empty
-            continue;  // continue the loop
-        }
-
-        char formatted_msg[MAX_MSG + 256];  // Buffer to hold the formatted message (username + message)
-        formatted_msg[0] = '\0';  // Initialize it as an empty string
-
-        // Construct the formatted message: "username: message"
-        strncat(formatted_msg, username, sizeof(formatted_msg) - strlen(formatted_msg) - 1);  // Append username
-        strncat(formatted_msg, ": ", sizeof(formatted_msg) - strlen(formatted_msg) - 1);  // Append delimiter
-        strncat(formatted_msg, message, sizeof(formatted_msg) - strlen(formatted_msg) - 1);  // Append user message
-
-        // Send the formatted message to the server
-        int sent = send(sockfd, formatted_msg, strlen(formatted_msg), 0);
-        if (sent < 0) {  // Check if sending the message failed
-            perror("Failed to send message");  // Print an error message
-            break;  // Exit the loop
+    while (1) {
+        printf("[Client %s] > ", username);
+        fflush(stdout);
+        
+        int poll_result = poll(fds, 2, -1);
+        if (poll_result < 0) {
+            perror("Poll failed");
+            break;
         }
 
-        // Receive the response from the server
-        char buf[BUFFER_SIZE] = {0};  // Buffer for storing the received message
-        int rec = recv(sockfd, buf, BUFFER_SIZE - 1, 0);  // Receive data from the server
-        if (rec <= 0) {  // Check if the reception failed or the server disconnected
-            if (rec == 0) printf("Server disconnected.\n");  // Notify the user if the server closed the connection
-            else perror("Failed to receive message");  // Print an error message
-            break;  // Exit the loop
+        // Handle input from user
+        if (fds[0].revents & POLLIN) {
+            memset(message, 0, MAX_MSG);  // Clear previous message
+            fgets(message, MAX_MSG, stdin);
+            message[strcspn(message, "\n")] = 0;  // Remove newline
+
+            if (strcmp(message, "\\exit") == 0) {
+                printf("exiting...\n");
+                break;
+            }
+
+            if (strlen(message) > 0) {
+                char formatted_msg[MAX_MSG + MAX_USERNAME + 2] = {0};
+                snprintf(formatted_msg, sizeof(formatted_msg), "%s: %s", username, message);
+                
+                if (send(sockfd, formatted_msg, strlen(formatted_msg), 0) < 0) {
+                    perror("Failed to send message");
+                    break;
+                }
+            }
         }
 
-        buf[rec] = '\0';  // Null-terminate the received message to ensure it is a valid string
-        printf("[Server] %s\n", buf);  // Print the received message from the server
+        // Handle data from server
+        if (fds[1].revents & POLLIN) {
+            char buf[BUFFER_SIZE] = {0};
+            int rec = recv(sockfd, buf, BUFFER_SIZE - 1, 0);
+            
+            if (rec <= 0) {
+                if (rec == 0) printf("Server disconnected.\n");
+                else perror("Failed to receive message");
+                break;
+            }
+
+            buf[rec] = '\0';
+            printf("[Server] %s\n", buf);
+        }
     }
 
-    close(sockfd);  // Close the socket before exiting to free resources
-    return 0;  // Return successful execution status
+    close(sockfd);
+    return 0;
 }
