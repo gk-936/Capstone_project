@@ -50,7 +50,7 @@ bash
 
 
    ##*Conclusion*  
-This project establishes a *foundation for secure and intelligent communication* using *C programming. The integration of **RSA encryption and AI assistance* ensures both *privacy* and *smart interactions*.  
+This project establishes a *foundation for secure and intelligent communication* using *C programming. The integration of **RSA encryption and AI assistance* ensures both *privacy* and *smart interactions*.
 
 
 
