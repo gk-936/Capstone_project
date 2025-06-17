@@ -17,13 +17,29 @@ int main() {
 
     // ask the user to enter their username
     printf("Enter your username: ");
-    scanf("%255s", username);
-    getchar();  
+    if (fgets(username, sizeof(username), stdin) != NULL) {
+        username[strcspn(username, "\n")] = 0; // Remove newline
+    } else {
+        perror("Failed to read username");
+        return 1;
+    }
+    if (strlen(username) == 0) {
+        printf("Username cannot be empty.\n");
+        return 1;
+    }
 
     // ask the user to enter the server's IP address
     printf("Enter server IP address: ");
-    scanf("%255s", server_ip); 
-    getchar(); 
+    if (fgets(server_ip, sizeof(server_ip), stdin) != NULL) {
+        server_ip[strcspn(server_ip, "\n")] = 0; // Remove newline
+    } else {
+        perror("Failed to read server IP");
+        return 1;
+    }
+    if (strlen(server_ip) == 0) {
+        printf("Server IP cannot be empty.\n");
+        return 1;
+    }
 
     // Create a socket using the TCP protocol
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -53,7 +69,7 @@ int main() {
     printf("Connected to server at %s!\n", server_ip);  // Notify the user of a successful connection
 
     while (1) {  // Infinite loop for continuous message exchange
-        printf("[Client %s] > ", username);  // Display the prompt with the username
+        printf("You: ");  // Display the prompt with the username
         fgets(message, MAX_MSG, stdin);  // Read user input from standard input
         message[strcspn(message, "\n")] = 0;  // Remove the newline character from the input
        if (strcmp(message,"\\exit")==0){
@@ -90,7 +106,7 @@ int main() {
         }
 
         buf[rec] = '\0';  // Null-terminate the received message to ensure it is a valid string
-        printf("[Server] %s\n", buf);  // Print the received message from the server
+        printf("Server: %s\n", buf);  // Print the received message from the server
     }
 
     close(sockfd);  // Close the socket before exiting to free resources

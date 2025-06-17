@@ -1,56 +1,43 @@
 
-*Secure Chat Application in C (with RSA Encryption & AI Assistant)*  
+*Simple Chat Application in C*
 
   ##*Overview*  
-This project implements a *secure chat application* using the *C programming language, featuring **end-to-end RSA encryption* and an *AI-powered assistant. It follows a **client-server model* where users can securely communicate and query an AI assistant for intelligent responses.  
+This project implements a *simple chat application* using the *C programming language*. It follows a **client-server model* where users can communicate with each other.
 
    ##*Objectives*  
--  Develop a *real-time* messaging system using the *client-server model* in C.  
--  Implement *RSA encryption* to ensure secure transmission.  
--  Integrate an *AI assistant* that provides intelligent responses via the *Ollama API (Mistral model)*.  
--  Achieve *efficient and optimized communication* between users.  
+-  Develop a messaging system using the *client-server model* in C.
+-  Enable text-based communication between a client and a server operator.
+-  Offer a simple command-line interface for interaction.
 
    ##*Features*  
 
  🔹 *Client-Server Communication*  
-- Supports *real-time messaging* between multiple clients.  
-- Uses a *dedicated server* to manage direct routing.  
+- Supports *real-time messaging* between a client and a server operator.
+- Uses a *dedicated server* to manage communication.
 - Processes *user input and responses* dynamically.  
 
- 🔹 *End-to-End Encryption (RSA)*  
--  *Key Generation*: Generates public-private key pairs.  
--  *Encryption: Messages are encrypted using the **public key*.  
--  *Decryption: The receiver decrypts messages with their **private key*.  
+  ##*How It Works*
 
- 🔹 *AI Chat Assistant Integration*  
--  *Command*: Users can query an AI assistant using \ask <question>.  
--  *Process*:  
-  1. Client sends a query → Server forwards to *Ollama API (Mistral model)*.  
-  2. API processes the request and returns a *JSON response*.  
-  3. Server extracts the *AI-generated answer* and sends it back to the client.  
--  *Tech Stack: Uses **cURL for API requests* and *JSON parsing for responses*.  
+Before running the commands below, ensure you have compiled the `server_code.c` and `client_code.c` files (e.g., using a C compiler like GCC) to produce executables named `server` and `client` respectively, located in the current directory.
 
-
-
-  ##*How It Works*  
+The server must be started before the client can connect.
 
  *Start the Server*  
-bash
+```bash
 ./server
+```
 
  *Launch the Client*  
-bash
+```bash
 ./client
+```
+After launching the client, you will be prompted to enter the server's IP address.
 
-#enter the server IP address after running client
- *Chat Securely*  
-- Type messages to send them securely.  
-- Use \ask <question> to get AI-generated responses.  
-
-
+ *Chat*
+- Type messages to send them.
 
    ##*Conclusion*  
-This project establishes a *foundation for secure and intelligent communication* using *C programming. The integration of **RSA encryption and AI assistance* ensures both *privacy* and *smart interactions*.  
+This project establishes a *basic foundation for client-server communication* using *C programming*. It demonstrates a simple real-time chat application.  
 
 
 

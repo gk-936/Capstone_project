@@ -12,10 +12,17 @@
 
 int main() {
     char username[256];
-    printf("Enter your username:");
-    scanf("%255s", username);
-    getchar();
-
+    printf("Enter your username: ");
+    if (fgets(username, sizeof(username), stdin) != NULL) {
+        username[strcspn(username, "\n")] = 0; // Remove newline
+    } else {
+        perror("Failed to read username");
+        return 1;
+    }
+    if (strlen(username) == 0) {
+        printf("Username cannot be empty.\n");
+        return 1;
+    }
 
     // Server socket
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -51,7 +58,9 @@ int main() {
         int new_sockfd = accept(sockfd, (struct sockaddr *)&client_addr, &client_len);
         if (new_sockfd < 0) {
             perror("Accept failed");
-                    }
+            close(sockfd); // Close the listening socket before exiting
+            return 1;      // Exit if accept fails
+        }
 
         printf("Connected to client: %s\n", inet_ntoa(client_addr.sin_addr));
 
@@ -69,7 +78,7 @@ int main() {
             }
 
             // Print the received message
-            printf("[Server] Message from %s: %s\n", inet_ntoa(client_addr.sin_addr), buf);
+            printf("Client message (from %s): %s\n", inet_ntoa(client_addr.sin_addr), buf);
 
             // Allow the server operator to type a response
             char server_response[MAX_MSG];
