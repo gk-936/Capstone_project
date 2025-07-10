@@ -1,3 +1,4 @@
+#define _DEFAULT_SOURCE // For strdup and other POSIX extensions
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,7 +53,7 @@ static size_t buffer_append(void *contents, size_t size, size_t nmemb, void *use
 static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
     char *data = (char *)contents;
-    char *line = strdup(data);
+    char *line = strdup(data); // strdup is POSIX, needs _DEFAULT_SOURCE or _GNU_SOURCE
     
     if (!line) {
         fprintf(stderr, "Memory allocation failed\n");
@@ -170,34 +171,29 @@ int main() {
   
     printf("Enter your username: ");
     if (fgets(username, MAX_USERNAME - 1, stdin) == NULL) {
-        perror("Error reading username");
+        perror("[INFO] Error reading username");
         return 1;
     }
-    // Remove newline character if present
     username[strcspn(username, "\n")] = '\0';
 
-    // Validate username length
     if (strlen(username) == 0) {
-        fprintf(stderr, "Username cannot be empty\n");
+        fprintf(stderr, "[INFO] Username cannot be empty\n");
         return 1;
     }
 
-    // Server socket
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd == -1) {
-        perror("Socket creation failed");
+        perror("[INFO] Socket creation failed");
         return 1;
     }
 
-    // Set socket option to reuse address
     int opt = 1;
     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-        perror("setsockopt failed");
+        perror("[INFO] setsockopt failed");
         close(sockfd);
         return 1;
     }
 
-    // Bind to port
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
@@ -205,145 +201,161 @@ int main() {
     addr.sin_addr.s_addr = INADDR_ANY;
 
     if (bind(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        perror("Bind failed");
+        perror("[INFO] Bind failed");
         close(sockfd);
         return 1;
     }
 
-    // Listen for connections
     if (listen(sockfd, 10) < 0) {
-        perror("Listen failed");
+        perror("[INFO] Listen failed");
         close(sockfd);
         return 1;
     }
 
-    printf("Server listening on port %d...\n", PORT);
+    printf("[INFO] Server listening on port %d as '%s'...\n", PORT, username);
 
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
     int client_fd = accept(sockfd, (struct sockaddr *)&client_addr, &client_len);
     if (client_fd < 0) {
-        perror("Accept failed");
+        perror("[INFO] Accept failed");
         close(sockfd);
         return 1;
     }
 
-    printf("Connected to client: %s\n", inet_ntoa(client_addr.sin_addr));
-    printf("You can start sending messages. Type '\\exit' to quit. Type '\\ask' to speak with mistral.\n");    
+    printf("[INFO] Client %s connected.\n", inet_ntoa(client_addr.sin_addr));
+    printf("[INFO] Type '\\exit' to stop the server. Type '\\ask <prompt>' to query AI.\n");
     
     struct pollfd fds[2] = {
-        { 0, POLLIN, 0 },       // stdin
-        { client_fd, POLLIN, 0 } // client socket
+        { STDIN_FILENO, POLLIN, 0 }, // stdin
+        { client_fd, POLLIN, 0 }     // client socket
     };
- 
+
+    char current_input[MAX_MSG] = {0}; // Buffer for server's own input
+
     // Main communication loop
     while (1) {
-        static int first_prompt = 1;
-        if (first_prompt) {
-            printf("[Server %s] > ", username);
-            fflush(stdout);
-            first_prompt = 0;
-        }
+        printf("\rServer (%s) > %s", username, current_input);
+        fflush(stdout);
 
         int poll_count = poll(fds, 2, -1);
         if (poll_count < 0) {
-            perror("Poll failed");
+            perror("[INFO] Poll failed");
             break;
         }
 
-        // Handle user input from stdin
+        // Handle server operator input from stdin
         if (fds[0].revents & POLLIN) {
-            memset(message, 0, MAX_MSG);  // Clear previous message
-            if (fgets(message, MAX_MSG - 1, stdin) == NULL) {
-                perror("Error reading message");
+            char input_char;
+            ssize_t nread = read(STDIN_FILENO, &input_char, 1);
+
+            if (nread > 0) {
+                if (input_char == '\n') { // Enter key pressed
+                    printf("\r%*s\r", (int)(strlen("Server () > ") + strlen(username) + strlen(current_input)), "");
+                    fflush(stdout);
+
+                    if (strcmp(current_input, "\\exit") == 0) {
+                        printf("[INFO] Server exiting...\n");
+                        break;
+                    } else if (strncmp(current_input, "\\ask", 4) == 0) {
+                        char *prompt = current_input + 4;
+                        while (*prompt && isspace((unsigned char)*prompt)) prompt++;
+
+                        if (strlen(prompt) > 0) {
+                            printf("[AI-LOG] Server initiated AI query: %s\n", prompt);
+                            char *ai_response = get_ai_response(prompt);
+                            if (ai_response) {
+                                printf("[AI] > %s\n", ai_response); // Display AI response to server console
+                                free(ai_response);
+                            } else {
+                                fprintf(stderr, "[AI-LOG] Failed to get AI response for server query.\n");
+                            }
+                        } else {
+                            fprintf(stderr, "[INFO] Empty prompt after \\ask command.\n");
+                        }
+                    } else if (strlen(current_input) > 0) {
+                        // Server operator sends a message to the client
+                        char formatted_msg[MAX_MSG + MAX_USERNAME + 15] = {0}; // Increased buffer
+                        // Prefix with "MSG|" and server's username
+                        snprintf(formatted_msg, sizeof(formatted_msg), "MSG|Server (%s): %s",username, current_input);
+                        if (send(client_fd, formatted_msg, strlen(formatted_msg), 0) < 0) {
+                            perror("[INFO] Failed to send message to client");
+                            // No break here, server should continue running
+                        }
+                        printf("You (Server %s) > %s\n", username, current_input); // Log server's own message
+                    }
+                    memset(current_input, 0, MAX_MSG); // Clear input buffer
+                } else if (input_char == 127 || input_char == 8) { // Backspace
+                    if (strlen(current_input) > 0) {
+                        current_input[strlen(current_input) - 1] = '\0';
+                        printf("\r%*s\r", (int)(strlen("Server () > ") + strlen(username) + strlen(current_input) + 1), "");
+                    }
+                } else if (strlen(current_input) < MAX_MSG - 1 && input_char >= 32 && input_char <=126) {
+                    current_input[strlen(current_input)] = input_char;
+                }
+            } else if (nread == 0) { // EOF
+                printf("\r%*s\r", (int)(strlen("Server () > ") + strlen(username) + strlen(current_input)), "");
+                printf("[INFO] EOF received, server exiting...\n");
+                break;
+            } else {
+                perror("[INFO] Read from stdin failed");
                 break;
             }
-            message[strcspn(message, "\n")] = 0;  // Remove newline
-
-            if (strcmp(message, "\\exit") == 0) {
-                printf("Exiting...\n");
-                break;  // Exit the loop if the server operator types \exit
-            }
-            
-            if (strncmp(message, "\\ask", 4) == 0) {
-                char *prompt = message + 4;
-                while (*prompt && isspace((unsigned char)*prompt)) prompt++;
-                
-                if (strlen(prompt) > 0) {
-                    char *ai_response = get_ai_response(prompt);
-                    if (ai_response) {
-                        // Print response only to server
-                        printf("\nAI: %s\n", ai_response);
-                        free(ai_response);
-                    } else {
-                        fprintf(stderr, "Failed to get AI response\n");
-                    }
-                } else {
-                    fprintf(stderr, "Empty prompt after \\ask\n");
-                }
-                continue;
-            }
-            
-            // Send regular message to client with MSG prefix
-            if (strlen(message) > 0) {
-                char formatted_msg[MAX_MSG + MAX_USERNAME + 10] = {0}; // Added extra space for prefix
-                snprintf(formatted_msg, sizeof(formatted_msg), "MSG|%s: %s", username, message);
-                if (send(client_fd, formatted_msg, strlen(formatted_msg), 0) < 0) {
-                    perror("Failed to send message");
-                    break;
-                }
-            }
-
-            // Print prompt only after processing user input
-            printf("[Server %s] > ", username);
-            fflush(stdout);
         }
         
         // Handle messages from client
         if (fds[1].revents & POLLIN) {
+            printf("\r%*s\r", (int)(strlen("Server () > ") + strlen(username) + strlen(current_input)), "");
+            fflush(stdout);
+
             char buf[BUFFER_SIZE] = {0};
             int rec = recv(client_fd, buf, BUFFER_SIZE - 1, 0);
 
             if (rec <= 0) {
                 if (rec == 0) {
-                    printf("**Client disconnected.**\n");
+                    printf("[INFO] Client disconnected.\n");
                 } else {
-                    perror("Recv failed");
+                    perror("[INFO] Recv from client failed");
                 }
-                break;  // Exit the loop if the client disconnects or an error occurs
+                // Don't break the server if one client disconnects, could wait for new one
+                // For this simple 1-1 chat, we break.
+                break;
             }
             buf[rec] = '\0';
             
-            // Check if client sent \ask command
             if (strncmp(buf, "\\ask", 4) == 0) {
-                // Don't print the AI request to server console
                 char *prompt = buf + 4;
                 while (*prompt && isspace((unsigned char)*prompt)) prompt++;
                 
+                printf("[AI-LOG] Client initiated AI query: %s\n", prompt);
                 if (strlen(prompt) > 0) {
                     char *ai_response = get_ai_response(prompt);
                     if (ai_response) {
                         char formatted_response[BUFFER_SIZE] = {0};
+                        // Prefix with "AI|" for client to parse
                         snprintf(formatted_response, sizeof(formatted_response), "AI|%s", ai_response);
                         if (send(client_fd, formatted_response, strlen(formatted_response), 0) < 0) {
-                            perror("Failed to send AI response");
+                            perror("[INFO] Failed to send AI response to client");
                         }
+                        // Optionally log AI response on server too, or part of it
+                        // printf("[AI-LOG] Sent AI response to client (first 50 chars): %.50s...\n", ai_response);
                         free(ai_response);
                     } else {
-                        fprintf(stderr, "Failed to get AI response for client\n");
+                        fprintf(stderr, "[AI-LOG] Failed to get AI response for client query.\n");
+                        // Inform client about failure?
+                        char *fail_msg = "AI|Sorry, I could not process your request.";
+                        send(client_fd, fail_msg, strlen(fail_msg),0);
                     }
                 } else {
-                    fprintf(stderr, "Empty prompt from client\n");
+                    fprintf(stderr, "[INFO] Empty prompt from client's \\ask command.\n");
+                    char *empty_prompt_msg = "AI|Your \\ask command was empty.";
+                    send(client_fd, empty_prompt_msg, strlen(empty_prompt_msg),0);
                 }
             } else {
-                // Only print regular messages from client
-                printf("\n[Client] %s\n", buf);
-            }
-
-            // Only print prompt after regular messages, not after AI requests
-            if (strncmp(buf, "\\ask", 4) != 0) {
-                printf("[Server %s] > ", username);
-                fflush(stdout);
+                // Assumes client sends "username: message"
+                // For now, server prints it as is, but prefixed.
+                // The client side change was to send "username: message" for non-\ask messages.
+                printf("[Client] %s\n", buf);
             }
         }
     }
